@@ -1,0 +1,290 @@
+\documentclass[letterpaper,times]{IONconf-v2}
+\addbibresource{srnx-paper.bib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{bytefield}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Document starts here
+
+\articletype{Short paper}
+
+%\received{26 April 2016}
+%\revised{6 June 2016}
+%\accepted{6 June 2016}
+%\doi{10.1109/xxx.xx.xxxx}
+%\journalname{NAVIGATION}
+%\journalvolume{5}
+%\journalnumber{7}
+
+% Authors are grouped by institution. Institution names are italicized.
+\title{A Space- and Time-Efficient Format for RINEX Data}
+\author[1]{Michael Poole}
+\authormark{Michael Poole}
+\address[1]{ION Member, Virginia, United States}
+\corres{Michael Poole\\ \email{mdpoole@troilus.org}}
+
+\begin{document}
+
+\abstract[Abstract]{The Receiver-Independent Exchange (RINEX) data format
+is a simple text-oriented format that represents data in an epoch-major
+or "row-oriented" format.
+It provides a simple and robust format, but requires significant space
+to store.
+Y.~Hatanaka has defined several iterations of the Compressed RINEX
+(CRINEX) format to represent observation data in a compressed text format.
+Online archives often use text-to-binary compression formats to further
+compress both RINEX and CRINEX files.
+This paper describes an observation-major (columnar) binary format that
+requires less storage space than these formats while supporting very
+fast reads and competitive write times.}
+
+\keywords{RINEX, CRINEX, compression, columnar data, delta coding}
+
+\maketitle
+
+\section{Introduction}
+
+This paper describes the "Succinct RINEX" (SRNX) file format, a
+representation of RINEX observation data that leverages techniques that
+have been adopted in the "big data" field to improve data density and
+access times.
+
+Section 2 briefly describes the file format.
+Section 3 provides performance for storage density, conversion times
+from RINEX and CRINEX (\cite{RNXCMP}) formats, and time to load data
+from files.
+Section 4 describes additional features of the reference implementation
+of the format and suggests potential further work.
+
+\section{The SRNX Format}
+
+An SRNX file consists of a number of chunks with an optional file-level
+digest following the last chunk.
+Each chunk starts with a four-character code (FOURCC) identifying its
+semantic and structural type, followed by the length of the payload in
+little-endian base-128 (LEB128) format, the payload, and the per-chunk
+digest.
+The per-chunk digest covers the FOURCC, length and payload fields.
+Figure \ref{fig:srnx-file} shows the general structure of a SRNX file;
+Figure \ref{fig:srnx-chunk} illustrates the FOURCC structure for a
+file-initial SRNX chunk.
+
+\begin{figure}
+\centering
+\begin{minipage}{0.45\textwidth}
+	\centering
+	\includegraphics[width=\textwidth]{figures/srnx-file.pdf}
+	\caption{SRNX File Structure}
+	\label{fig:srnx-file}
+\end{minipage}\hfill
+\begin{minipage}{0.45\textwidth}
+	\centering
+	\includegraphics[width=\textwidth]{figures/pareto.pdf}
+	\caption{Compression Ratio vs Wall Time}
+	\label{fig:compress-time}
+\end{minipage}
+\end{figure}
+
+\begin{figure}[htb]
+\centering
+\begin{bytefield}[bitwidth=1.1em]{32}
+	\bitheader{0-31} \\
+	\begin{rightwordgroup}{FOURCC \\ header}
+		\bitbox{32}{'SRNX'} \\
+		\bitbox{8}{payload length=16}
+	\end{rightwordgroup} \\
+	\begin{rightwordgroup}{Payload}
+		\bitboxes{8}{{major=1}{minor=0}{chunk=2 (CRC-32C)}{file=5 (BLAKE3-256)}} \\
+		\bitbox{32}{SDIR offset=27710945 (\texttt{e1 ab 9b 0d})} \\
+		\wordbox{2}{padding (zero bytes)}
+	\end{rightwordgroup} \\
+	\begin{rightwordgroup}{Digest}
+		\wordbox{1}{CRC-32C (\texttt{1e 72 4f ba})}
+	\end{rightwordgroup}
+\end{bytefield}
+\caption{SRNX Chunk Example}
+\label{fig:srnx-chunk}
+\end{figure}
+
+\begin{figure}[htb]
+\centering
+\begin{bytefield}[bitwidth=1.1em]{32}
+	\bitheader{0-31} \\
+	\begin{rightwordgroup}{FOURCC \\ header}
+		\bitbox{32}{'SOCD'} \\
+		\bitbox{24}{payload length}
+	\end{rightwordgroup} \\
+	\begin{rightwordgroup}{Payload}
+		\bitbox{24}{RINEX satellite code (e.g. 'G01')}\bitbox{8}{pad=0} \\
+		\bitbox{24}{RINEX observation code (zero padded for v2)}\bitbox{8}{pad=0} \\
+		\bitbox{16}{Length of LLI data} \bitbox[lt]{16}{RLE LLIs} \\
+		\bitbox{32}{ ... run-length encoded LLIs ... } \\
+		\bitbox{16}{Length of SSI data} \bitbox[lt]{16}{RLE SSIs} \\
+		\bitbox{32}{ ... run-length encoded SSIs ... } \\
+		\bitbox{24}{Length of obs data} \bitbox{8}{Flag+Order} \\
+		\bitbox{32}{Optional scale (LEB128)} \\
+		\bitbox{32}{\textit{Order} signed LEB128 initial deltas} \\
+		\wordbox{3}{... compressed block data ...}
+	\end{rightwordgroup} \\
+	\begin{rightwordgroup}{Digest}
+		\wordbox{1}{CRC-32C}
+	\end{rightwordgroup}
+\end{bytefield}
+\caption{SOCD Chunk Format}
+\label{fig:socd-chunk}
+\end{figure}
+
+\subsection{Chunk Types}
+
+The initial SRNX chunk identifies the file as a SRNX; it provides a
+version, message-digest selection for each chunk and for the file as a
+whole, and an offset of the SDIR chunk (if one exists).
+CRC-32C is the recommended digest for each chunk; BLAKE3-256 is the
+recommended whole-file digest.
+
+The following RHDR chunk carries the RINEX header, with newlines
+normalized to Unix style and trailing whitespace removed from lines to
+facilitate finding lines by type.
+
+The EPOC chunk describes the timestamps of observation epochs.
+
+Each EVTF chunk contains one special event record, with epoch flag 2
+through 5 inclusive, with newlines normalized to Unix style.
+
+Each observed satellite has one or more SOCD chunks that contain packed
+observation code data, and typically has an SATE chunk that provides a
+directory of SOCD chunks for name-based lookup.
+The basic structure of an SOCD chunk is zero-filled satellite and
+observation code identifiers, run-length coded LLIs and SSIs, the delta
+coding order plus a flag indicating the presence of a scale value,
+the optional scale indicating the resolution of the values
+(for example, when $C/N_0$ is rounded to quarter-dB-Hz resolution),
+initial values for the delta coder, and a number of compressed blocks.
+The structure of the SOCD chunk is shown in Figure \ref{fig:socd-chunk}.
+
+Each compressed SOCD block has a header byte indicating the format.
+224 values select one of seven matrix lengths, representing the number
+of coded values in the matrix, and the bit length of each value from 1
+to 32 bits.
+Three values select special cases, starting with a LEB128 count of
+(respectively) absent values, zero values or signed LEB128 values.
+The other 29 header values are reserved.
+The compressed block form was inspired by \cite{https://doi.org/10.1002/spe.2203}.
+
+Finally, there is typically an SDIR chunk providing a directory of SATE
+chunks to find per-satellite information.
+
+A detailed specification of the format for each chunk type is provided
+in the reference implementation.
+
+\subsection{Compression Algorithm(s)}
+
+SRNX uses run-length encoding for several fields: epoch timestamps,
+LLIs and SSIs.
+It uses a CRINEX-like delta coding for observation values, and codes the
+residuals with a variable number of bits over time.
+
+The reference compressor identifies the optimal coded length for a
+candidate delta order, and will attempt the next largest order until
+either order 7 is checked or two consecutive orders increase the size.
+It identifies the optimal coded length for a given order with dynamic
+programming to find the shortest path from the start to end of the
+observations, with different values of header bytes in SOCD blocks
+(plus number of LEB128 values) representing edges in the graph.
+This results in a runtime approximately 50\% longer than
+\texttt{RNX2CRX}.
+
+For an arbitrary day in May 2026, the most common delta order was 3,
+followed by 1 and 2, with very few SOCDs using order 0 or 4, and none
+using more than 4.
+
+\section{Performance}
+
+\subsection{Compression Ratio and Time}
+
+Figure \ref{fig:compress-time} shows the total time to compress a one-day
+set of NOAA CORS station data and the corresponding compression ratio
+achieved by various schemes, with numbers shown in
+Table \ref{tab:compress-time}.
+Wall time is measured with parallelism of 16 jobs.
+This data is from 9 August 2022 because GLONASS satellite R25 began
+transmitting the next day, and the final version of teqc rejects that.
+
+Notably, general-purpose compressors provide only a few percent gain on
+an SRNX file, although 30-second decimated files are small enough that
+the wall time for further compression may be tolerable for that gain.
+
+\begin{table}[htb]
+\caption{Compression Ratio vs Wall Time by compression method}
+\label{tab:compress-time}
+\begin{tblr}{colspec={X[l]X[c]X[c]X[l]},width=\textwidth,rowsep=2pt,
+	row{even} = {white,font=\small},
+	row{odd} = {bg=black!10,font=\small},
+	row{1} = {bg=black!20,font=\bfseries\small},
+	hline{Z} = {1pt,solide,black!60}}
+Method & Ratio & Wall Time (s) & Comments \\
+CRINEX & 4.1709 & 100.43 & RNXCMP v4.2.0 \\
+CRINEX + gzip & 11.7922 & 1036.79 & gzip v1.14, -9 \\
+CRINEX + bzip3 & 17.5041 & 662.26 & bzip3 v1.5.3 \\
+SRNX & 19.4568 & 149.65 & this work \\
+SRNX + bzip3 & 19.7888 & 464.08 & \\
+SRNX + zpaq & 19.9669 & 3310.59 & zpaq v7.15, -m56 \\
+30 s & 15.2707 & 62.71 & teqc 2019Feb25 \\
+30 s + CRINEX & 50.8202 & 132.88 & \\
+30 s + CRINEX + gzip & 133.4279 & 266.67 & \\
+30 s + SRNX & 207.6444 & 137.87 & \\
+30 s + SRNX + pcompress & 216.7108 & 105.46 & pcompress v3.1, -a -l 14 -D -G -L -s 64m \\
+30 s + SRNX + zpaq & 219.8175 & 505.82 & \\
+\end{tblr}
+\end{table}
+
+\subsection{Loading Time}
+
+Reading SRNX data is time-competitive with reading RINEX and CRINEX data.
+When comparing mismatched pairs (thus triggering termination soon after
+loading the files) on a Macbook~Pro with M2~Max processor, the reference
+implementation's \texttt{rnxcmp} utility loads files from the operating
+system's cache three to four times as fast as reading content-equivalent
+RINEX and CRINEX into the same columnar in-memory format.
+
+(The reference implementation offers a row-based API to read RINEX and
+CRINEX, avoiding memory management to put data in column format.
+This mode takes 2.5 times as long as reading SRNX.)
+
+\subsection{Correctness}
+
+Underlying data and scripts, plus links to two implementations (a
+reference implementation in C and an AI-assisted clean-room
+implementation in Rust) are available in the supplementary data
+(\cite{REPO}).
+
+Both implementations include semantic comparison scripts, which gave
+clean results for 9 August 2022, an earlier benchmark day (18 July 2020),
+and most of May 2026.
+In May 2026, an average of less than one file per day was rejected by
+the \texttt{rnx2srnx} converter due to syntax errors in the original
+RINEX files; there were no mismatches among converted files.
+
+\section{Further Work}
+
+Many of the RINEX files rejected by the reference implementation could
+be recovered given the redundancies in RINEX; common error modes include
+including a new satellite only in the epoch header or only in the
+observations, and specifying the satellite code with spaces in place of
+the identifying digits.
+
+The seven matrix lengths for SOCD blocks (8, 16, 24, 32, 40, 48 and 112)
+were chosen by optimizing compression size over the benchmark day, and
+might not be globally optimal.
+Varying these per file would be straightforward, although selecting them
+is expensive during compression.
+
+Separating fields from an SRNX and trying to compress them individually
+identified likely redundancy in the SOCD block-header bytes, and
+redundancy in the run-length coded form of SSIs.
+LLI and SSI might benefit from using the observation coding form, and
+SSI could be elided when it is a function of $C/N_0$.
+
+\printbibliography[title=References]
+
+\end{document}

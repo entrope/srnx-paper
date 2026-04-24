@@ -1,0 +1,17 @@
+# Ignore directories that might get created here from test runs.
+/30s/
+/30s_crx/
+/bzip3
+/crx/
+/figures/srnx-file.pdf
+/figures/srnx-file.svg
+/orig/
+/srnx.aux
+/srnx.bbl
+/srnx.bcf
+/srnx.blg
+/srnx.log
+/srnx.out
+/srnx.pdf
+/srnx.run.xml
+*.dat
