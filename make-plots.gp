@@ -1,5 +1,4 @@
 set datafile separator " "
-set logscale
 
 # Unicode geometric shapes for point type:
 # -filled-   -unfilled-
@@ -19,7 +18,10 @@ set xlabel "Compression Ratio"
 set ylabel "Wall Time (s)"
 set key right top
 set pointsize 2
-plot [3:240] [50:5000] \
+set logscale
+set xtics 4, 2, 256
+set ytics 50, 3, 4050
+plot [3:240] [40:4000] \
 	'pareto.dat' index 'crx'      using 1:2 title 'CRX' with points pt "\U+25A0", \
 	'' index 'crx+gzip'           using 1:2 title 'CRX + gzip' with points pt "\U+25C6", \
 	'' index 'crx+bzip3'          using 1:2 title 'CRX + bzip3' with points pt "\U+2B22", \

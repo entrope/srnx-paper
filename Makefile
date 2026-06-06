@@ -45,9 +45,6 @@ $(DIAGRAM_SVG): $(DIAGRAM_DSL)
 $(DIAGRAM_PDF): $(DIAGRAM_SVG) fix-svg-bg.sh
 	sh fix-svg-bg.sh < $< | inkscape --export-background=white --export-filename=$@ -p > $@
 
-pareto.dat: sizes.dat
-	perl pareto.pl --keep < $< > $@
-
 figures/pareto.pdf: make-plots.gp pareto.dat 
 	gnuplot -e "set terminal pdfcairo enhanced font 'Helvetica,10' size 6in,4in; \
 	            set output '$@'" $<

@@ -5,7 +5,7 @@
 This repository has the paper and supporting scripts to describe the
 Succinct RINEX format.
 It goes along with the [reference implementation](https://github.com/entrope/srnx/)
-and the [Rust clean-room implementation](https://github.com/entrope/srnx-rs/).
+and the [Rust clean-room implementation](https://github.com/entrope/srnx-clean/).
 
 ## Contents
 

@@ -124,7 +124,7 @@ file-initial SRNX chunk.
 		\bitbox{24}{Length of obs data} \bitbox{8}{Flag+Order} \\
 		\bitbox{32}{Optional scale (LEB128)} \\
 		\bitbox{32}{\textit{Order} signed LEB128 initial deltas} \\
-		\wordbox{3}{... compressed block data ...}
+		\wordbox{2}{... compressed block data ...}
 	\end{rightwordgroup} \\
 	\begin{rightwordgroup}{Digest}
 		\wordbox{1}{CRC-32C}
@@ -191,8 +191,7 @@ It identifies the optimal coded length for a given order with dynamic
 programming to find the shortest path from the start to end of the
 observations, with different values of header bytes in SOCD blocks
 (plus number of LEB128 values) representing edges in the graph.
-This results in a runtime approximately 50\% longer than
-\texttt{RNX2CRX}.
+This results in a runtime less than twice that of \texttt{RNX2CRX}.
 
 For an arbitrary day in May 2026, the most common delta order was 3,
 followed by 1 and 2, with very few SOCDs using order 0 or 4, and none
@@ -223,18 +222,18 @@ the wall time for further compression may be tolerable for that gain.
 	row{1} = {bg=black!20,font=\bfseries\small},
 	hline{Z} = {1pt,solide,black!60}}
 Method & Ratio & Wall Time (s) & Comments \\
-CRINEX & 4.1709 & 100.43 & RNXCMP v4.2.0 \\
-CRINEX + gzip & 11.7922 & 1036.79 & gzip v1.14, -9 \\
-CRINEX + bzip3 & 17.5041 & 662.26 & bzip3 v1.5.3 \\
-SRNX & 19.4568 & 149.65 & this work \\
-SRNX + bzip3 & 19.7888 & 464.08 & \\
-SRNX + zpaq & 19.9669 & 3310.59 & zpaq v7.15, -m56 \\
-30 s & 15.2707 & 62.71 & teqc 2019Feb25 \\
-30 s + CRINEX & 50.8202 & 132.88 & \\
-30 s + CRINEX + gzip & 133.4279 & 266.67 & \\
-30 s + SRNX & 207.6444 & 137.87 & \\
-30 s + SRNX + pcompress & 216.7108 & 105.46 & pcompress v3.1, -a -l 14 -D -G -L -s 64m \\
-30 s + SRNX + zpaq & 219.8175 & 505.82 & \\
+CRINEX & 4.1636 & 102.36 & RNXCMP v4.2.0 \\
+CRINEX + gzip & 11.7127 & 1039.59 & gzip v1.14, -9 \\
+CRINEX + bzip3 & 17.3284 & 660.2 & bzip3 v1.5.3 \\
+SRNX & 19.3294 & 175.3 & this work \\
+SRNX + bzip3 & 19.6633 & 500.35 & \\
+SRNX + zpaq & 19.8464 & 3427.45 & zpaq v7.15, -m56 \\
+30 s & 15.8571 & 57.15 & teqc 2019Feb25 \\
+30 s + CRINEX & 52.7277 & 64.14 & \\
+30 s + CRINEX + gzip & 138.2165 & 125.72 & \\
+30 s + SRNX & 214.2017 & 69.91 & \\
+30 s + SRNX + pcompress & 223.7749 & 100.18 & pcompress v3.1, -a -l 14 -D -G -L -s 64m \\
+30 s + SRNX + zpaq & 226.9678 & 360.94 & \\
 \end{tblr}
 \end{table}
 
